@@ -16,6 +16,9 @@ app.use('/', routes);
 app.get('/',(req,res) =>{
 return res.json("Hello from server")
 })
+app.get('/message',(req,res)=>{
+  return res.json("message from server")
+})
 app.listen(port, () => {
     console.log(`Server is running on port ${port}.`);
   });
