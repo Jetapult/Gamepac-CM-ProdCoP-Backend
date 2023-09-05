@@ -9,6 +9,9 @@ const databaseConfig = {
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
   timezone: 'Asia/Kolkata', // Replace with your desired timezone
+  ssl: {
+    rejectUnauthorized: false
+  }
 };
 
 const pool=new Pool(databaseConfig);
