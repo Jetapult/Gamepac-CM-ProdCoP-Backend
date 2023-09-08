@@ -2,6 +2,9 @@ const { pool } = require("../config/db-config");
 const axios = require('axios');
 const FormData = require('form-data');
 const { Readable } =  require('stream');
+const fs = require('fs');
+const path = require('path');
+const ffmpeg = require('fluent-ffmpeg');
 require('dotenv').config();
 
 const bufferToStream = (buffer) => {
@@ -9,6 +12,139 @@ const bufferToStream = (buffer) => {
 }
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+async function splitAndTranscribeAudio(input, outputDirectory) {
+  // Get the duration of the audio file in seconds
+  const duration = await new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(input.path, (err, metadata) => {
+      if (err) reject(err);
+      else resolve(metadata.format.duration);
+    });
+  });
+
+  // Calculate the number of chunks
+  const chunkDuration = 15 * 60; // 5 minutes in seconds
+  const numChunks = Math.ceil(duration / chunkDuration);
+
+  // Create the output directory if it doesn't exist
+  if (!fs.existsSync(outputDirectory)) {
+    fs.mkdirSync(outputDirectory, { recursive: true });
+  }
+
+  let transcriptions = [];
+
+  // Use a loop to split the audio file into chunks
+  for (let currentChunk = 1; currentChunk <= numChunks; currentChunk++) {
+    const startOffset = (currentChunk - 1) * chunkDuration;
+    const outputFileName = path.join(outputDirectory, `chunk${currentChunk}.mp3`);
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(input.path)
+        .setStartTime(startOffset)
+        .setDuration(chunkDuration)
+        .output(outputFileName)
+        .on('end', async () => {
+          console.log(`Chunk ${currentChunk} saved as ${outputFileName}`);
+          const transcription = await transcribeAudioChunk(outputFileName);
+          console.log(`Transcription of chunk ${currentChunk}: ${transcription}`);
+          transcriptions.push(transcription);
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error(`Error processing chunk ${currentChunk}: ${err.message}`);
+          reject(err);
+        })
+        .run();
+    });
+  }
+
+  return transcriptions.join(' ');
+}
+
+async function transcribeAudioChunk(audioFilePath) {
+  try {
+    const formData = new FormData();
+    const audioStream = fs.createReadStream(audioFilePath);
+  
+    formData.append('file', audioStream, { filename: 'audio.mp3' });
+    formData.append('model', 'whisper-1');
+    formData.append('response_format', 'json');
+  
+    const config = {
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${formData._boundary}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+    };
+  
+    const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, config);
+    return response.data.text;
+  } catch (error) {
+    console.error(`Error transcribing chunk from ${audioFilePath}: ${error.message}`);
+  }
+
+}
+
+const transcribe = async (req, res) => {
+  try {
+    const audioFile = req.file;
+    if (!audioFile) {
+      return res.status(400).json({ error: 'No audio file provided' });
+    }
+
+    const fileSizeInMB = audioFile.size / (1024 * 1024); // Convert to MB
+    console.log(`Uploaded audio file size: ${fileSizeInMB} MB`);
+
+    if (fileSizeInMB > 25) {
+      console.log('Audio file size is greater than 25 MB. Splitting and transcribing...');
+
+      // Create a temporary output directory
+      const outputDirectory = 'temp_chunks';
+      if (!fs.existsSync(outputDirectory)) {
+        fs.mkdirSync(outputDirectory, { recursive: true });
+      }
+
+      // Write the buffer to a file
+      const audioFilePath = path.join(outputDirectory, 'input.mp3');
+      fs.writeFileSync(audioFilePath, audioFile.buffer);
+
+      // Split and transcribe the audio
+      const transcription = await splitAndTranscribeAudio({ path: audioFilePath }, outputDirectory);
+
+      // Clean up temporary files if needed
+      fs.unlinkSync(audioFilePath);
+      fs.rmdirSync(outputDirectory, { recursive: true });
+
+      console.log('Finished splitting and transcribing.');
+      res.json({ transcription });
+    } else {
+      console.log('Audio file size is within the acceptable range. Transcribing...');
+      
+      const formData = new FormData();
+      const audioStream = bufferToStream(audioFile.buffer);
+      formData.append('file', audioStream, { filename: 'audio.mp3', contentType: audioFile.mimetype });
+      formData.append('model', 'whisper-1');
+      formData.append('response_format', 'json');
+      
+      const config = {
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${formData._boundary}`,
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+      };
+
+      // Call the OpenAI Whisper API to transcribe the audio
+      const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, config);
+      const transcription = response.data.text;
+      res.json({ transcription });
+
+      console.log('Finished transcribing.');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Error transcribing audio' });
+  }
+};
 
 // API endpoint for user login (also handles adding unique users to the "User" table)
 const login=async (req, res) => {
@@ -155,33 +291,6 @@ const recorder= async (req, res) => {
     console.error('Error transcribing audio:', error);
     res.status(500).json({ error: 'An error occurred while transcribing audio' });
   }
-};
-
-//Route to transcribe mp3 sent via files
-const transcribe = async (req, res) => {
-  try {
-    const  audioFile  = req.file;
-    if (!audioFile) {
-      return res.status(400).json({ error: 'No audio file provided' });
-    }
-  const  formData  =  new  FormData();
-  const  audioStream  =  bufferToStream(audioFile.buffer);
-  formData.append('file', audioStream, { filename: 'audio.mp3', contentType: audioFile.mimetype });
-  formData.append('model', 'whisper-1');
-  formData.append('response_format', 'json');
-  const  config  = {
-    headers: {
-      "Content-Type": `multipart/form-data; boundary=${formData._boundary}`,
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-    },
-  };
-  // Call the OpenAI Whisper API to transcribe the audio
-  const  response  =  await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, config);
-  const  transcription  = response.data.text;
-  res.json({ transcription });
-} catch (error) {
-  res.status(500).json({ error: 'Error transcribing audio' });
-}
 };
 
 
