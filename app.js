@@ -3,10 +3,18 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 const fs=require('fs');
+const https=require('https');
 const authMiddleware=require('./middlewares/index')
 const middleware=require('./middlewares/index')
 require('dotenv').config();
 
+const key=fs.readFileSync('private.key');
+const cert=fs.readFileSync('certificate.crt')
+
+const cred={
+  key,
+  cert
+}
 const routes =require('./routes/routes');
 const port = process.env.PORT || 8080;
 app.use(cors());
@@ -26,3 +34,6 @@ app.get('/message',(req,res)=>{
 app.listen(port, () => {
     console.log(`Server is running on port ${port}.`);
   });
+
+const httpsServer=https.createServer(cred,app);
+httpsServer.listen(8443);
