@@ -253,15 +253,15 @@ const login=async (req, res) => {
   const saveData= async (req, res) => {
     console.log(req.body);
     try {
-      const {id,transcription,sum,todosList,p,flag,c} = req.body;
+      const {id,transcription,sum,todosList,p,flag,c,title} = req.body;
       const u=1;
       // Use your database pool/connection to insert the data into the data_table
       const query = `
-        INSERT INTO data_table (uid,transcript,summary,todos,purpose,flag,contributor1_id)
-        VALUES ($1, $2, $3,$4,$5,$6,$7)
+        INSERT INTO data_table (uid,transcript,summary,todos,purpose,flag,contributor1_id,title)
+        VALUES ($1, $2, $3,$4,$5,$6,$7,$8)
         RETURNING data_id;
       `;
-      const values = [id,transcription, sum,todosList,p,flag,c];
+      const values = [id,transcription, sum,todosList,p,flag,c,title];
       const result = await pool.query(query, values);
       // Extract the generated actionId from the result
       const actionId = result.rows[0].data_id;
@@ -477,7 +477,32 @@ const summary= async (req, res) => {
     res.status(500).json({ error: 'Error generating summary' });
   }
 };
-
+//Route to generate a title based on transcriiption from whisper 
+const title= async (req, res) => {
+  try {
+    const { transcription } = req.body;
+    console.log(req.headers);
+    // Now send the transcription to OpenAI API to create a summary
+    const openaiResponse = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: "gpt-3.5-turbo-16k",
+        messages: [{"role": "system", "content": "You are a smart Title generator, read the transcript thoroughly and generate a small and crisp title not more than 5 words."}, {role: "user", content: `${transcription}`}],
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+      }
+    );
+    const title = openaiResponse.data.choices[0].message.content;
+    res.json({ title });
+  } catch (error) {
+    console.error('Error generating summary:', error);
+    res.status(500).json({ error: 'Error generating summary' });
+  }
+};
 
 //Route to generate Action Items 
 const todos= async (req, res) => {
@@ -521,5 +546,6 @@ const todos= async (req, res) => {
     replyAssistant,
     summary,
     todos,
+    title,
     // Export other controller functions as needed
   };

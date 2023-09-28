@@ -14,6 +14,7 @@ router.post('/smartTranscribe',controller.smartActions);
 router.post('/replyAssistant', controller.replyAssistant);
 router.post('/summary',middleware.decodeToken,controller.summary);
 router.post('/todos',middleware.decodeToken,controller.todos);
+router.post('/title',middleware.decodeToken,controller.title);
 
 
 
