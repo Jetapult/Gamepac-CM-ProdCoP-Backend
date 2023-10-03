@@ -280,7 +280,7 @@ const getData= async (req, res) => {
 
     // Use your database pool/connection to fetch data for the given data_id
     const query = `
-      SELECT uid, transcript, summary, todos, purpose, timestamp
+      SELECT uid, transcript, summary, todos, purpose, timestamp,title
       FROM data_table
       WHERE data_id = $1;
     `;
@@ -459,7 +459,7 @@ const summary= async (req, res) => {
       'https://api.openai.com/v1/chat/completions',
       {
         model: "gpt-3.5-turbo-16k",
-        messages: [{"role": "system", "content": "You are a secretary that deeply reads and understands text transcriptions created by whisper, You summarise the text without missing any crucial points and create a summary."}, {role: "user", content: `${transcription}`}],
+        messages: [{"role": "system", "content": "You are a secretary that deeply reads and understands text transcriptions created by whisper, You summarise the text without missing any crucial points and create a summary. You list out the summary in points so it is more consumable for the users."}, {role: "user", content: `${transcription}`}],
       },
       {
         headers: {
