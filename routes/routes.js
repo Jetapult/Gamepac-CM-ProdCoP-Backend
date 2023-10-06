@@ -3,8 +3,9 @@ const router = express.Router();
 const controller=require('../controllers/controllers');
 const multer=require('multer');
 const middleware=require('../middlewares/index');
-const  upload  =  multer();
-
+// const  upload  =  multer();
+const storage = multer.memoryStorage()
+const upload = multer({ storage: storage })
 
 router.post('/api/login',controller.login);
 router.post('/data',controller.saveData);

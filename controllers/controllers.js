@@ -6,7 +6,21 @@ const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 require('dotenv').config();
+const { S3Client, PutObjectCommand} = require("@aws-sdk/client-s3");
 
+const bucket_name=process.env.AWS_BUCKET_NAME
+const bucket_region=process.env.AWS_BUCKET_REGION
+const bucket_access_key=process.env.AWS_ACCESS_KEY
+const bucket_secret_key=process.env.AWS_SECRET_ACCESS_KEY
+
+const s3 = new S3Client({
+  credentials: {
+    accessKeyId:bucket_access_key,
+    secretAccessKey:bucket_secret_key
+  },
+  region:bucket_region,
+})
+// retrieve the aws s3 link 
 const bufferToStream = (buffer) => {
   return Readable.from(buffer);
 }
@@ -23,7 +37,7 @@ async function splitAndTranscribeAudio(input, outputDirectory) {
   });
 
   // Calculate the number of chunks
-  const chunkDuration = 15 * 60; // 5 minutes in seconds
+  const chunkDuration = 20 * 60; // 20 minutes in seconds
   const numChunks = Math.ceil(duration / chunkDuration);
 
   // Create the output directory if it doesn't exist
@@ -36,7 +50,7 @@ async function splitAndTranscribeAudio(input, outputDirectory) {
   // Use a loop to split the audio file into chunks
   for (let currentChunk = 1; currentChunk <= numChunks; currentChunk++) {
     const startOffset = (currentChunk - 1) * chunkDuration;
-    const outputFileName = path.join(outputDirectory, `chunk${currentChunk}.mp3`);
+    const outputFileName = path.join(outputDirectory, `chunk${currentChunk}${path.extname(input.path)}`);
 
     await new Promise((resolve, reject) => {
       ffmpeg(input.path)
@@ -113,7 +127,7 @@ async function transcribeAudioChunk(audioFilePath) {
     const formData = new FormData();
     const audioStream = fs.createReadStream(audioFilePath);
   
-    formData.append('file', audioStream, { filename: 'audio.mp3' });
+    formData.append('file', audioStream, { filename: 'audio' + path.extname(audioFilePath), contentType: 'audio/' + path.extname(audioFilePath).substring(1) });
     formData.append('model', 'whisper-1');
     formData.append('response_format', 'json');
   
@@ -158,6 +172,15 @@ async function transcribeRecorderChunk(audioFilePath) {
 const transcribe = async (req, res) => {
   try {
     const audioFile = req.file;
+    console.log(req.file);
+    const params={
+      Bucket:bucket_name,
+      Key: req.file.originalname,
+      Body:req.file.buffer,
+      ContentType:req.file.mimetype,
+    }
+    const command=new PutObjectCommand(params)
+    await s3.send(command);
     if (!audioFile) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
@@ -175,7 +198,7 @@ const transcribe = async (req, res) => {
       }
 
       // Write the buffer to a file
-      const audioFilePath = path.join(outputDirectory, 'input.mp3');
+      const audioFilePath = path.join(outputDirectory, 'input' + path.extname(audioFile.originalname));
       fs.writeFileSync(audioFilePath, audioFile.buffer);
 
       // Split and transcribe the audio
@@ -192,7 +215,7 @@ const transcribe = async (req, res) => {
       
       const formData = new FormData();
       const audioStream = bufferToStream(audioFile.buffer);
-      formData.append('file', audioStream, { filename: 'audio.mp3', contentType: audioFile.mimetype });
+      formData.append('file', audioStream, { filename: 'audio' + path.extname(audioFile.originalname), contentType: audioFile.mimetype });
       formData.append('model', 'whisper-1');
       formData.append('response_format', 'json');
       
