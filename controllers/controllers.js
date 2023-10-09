@@ -7,11 +7,34 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 require('dotenv').config();
 const { S3Client, PutObjectCommand} = require("@aws-sdk/client-s3");
+const { google } = require('googleapis');
+const jwt = require('jsonwebtoken');
 
 const bucket_name=process.env.AWS_BUCKET_NAME
 const bucket_region=process.env.AWS_BUCKET_REGION
 const bucket_access_key=process.env.AWS_ACCESS_KEY
 const bucket_secret_key=process.env.AWS_SECRET_ACCESS_KEY
+
+function generateJwt(keyId, issuerId, privateKey) {
+  const header = {
+    alg: 'ES256',
+    kid: keyId,
+    typ: 'JWT'
+  };
+
+  const payload = {
+    iss: issuerId,
+    exp: Math.floor(Date.now() / 1000) + (20 * 60), // 20 minutes
+    aud: 'appstoreconnect-v1'
+  };
+
+  return jwt.sign(payload, privateKey, { header: header });
+}
+const privateKey = fs.readFileSync('./AuthKey_QN33C4AAK9.p8').toString();
+const keyId = process.env.APPLE_KEY_ID;
+const issuerId = process.env.APPLE_ISSUER_ID;
+
+
 
 const s3 = new S3Client({
   credentials: {
@@ -556,6 +579,57 @@ const todos= async (req, res) => {
   }
 };
 
+//Fetch comments from google Play Store
+const fetchComments= async (req, res) => {
+  try {
+    const packageName = req.body.packageName;
+
+    const auth = new google.auth.GoogleAuth({
+      keyFile: './service-account.json',
+      scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+    });
+
+    const play = google.androidpublisher({
+      version: 'v3',
+      auth: auth,
+    });
+
+    const response = await play.reviews.list({
+      packageName: packageName,
+    });
+
+    const reviews = response.data.reviews.map(review => ({
+      comment: review.comments[0].userComment.text,
+      userName: review.authorName,
+      userRating: review.comments[0].userComment.starRating,
+      date: new Date(review.comments[0].userComment.lastModified.seconds * 1000).toLocaleDateString('en-GB'), // Convert from Unix timestamp to JavaScript Date object and format as DD-MM-YYYY
+    }));
+
+    res.json(reviews);
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: 'Error fetching reviews' });
+  }
+};
+
+const fetchAppleComments=async (req, res) => {
+  try {
+    const id = req.body.appId;
+    const token = generateJwt(keyId, issuerId, privateKey);
+    const response = await axios.get(`https://api.appstoreconnect.apple.com/v1/apps/${id}/customerReviews`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Error fetching customer reviews' });
+  }
+};
+
 
   module.exports = {
     login,
@@ -570,5 +644,7 @@ const todos= async (req, res) => {
     summary,
     todos,
     title,
+    fetchComments,
+    fetchAppleComments,
     // Export other controller functions as needed
   };
