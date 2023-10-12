@@ -448,7 +448,7 @@ const smartActions = async(req,res)=>{
       'https://api.openai.com/v1/chat/completions',
       {
         model: "gpt-3.5-turbo-16k",
-        messages: [{"role": "system", "content": "You are an analyst at a Game Studio, You read all the reviews given to the games from the Play Store or App Store. You analyse these reviews and give a recommendation to the founder/developers as to what should be the next steps into improving the game."}, {role: "user", content: `${comments}`}],
+        messages: [{"role": "system", "content": "You are an expert analyst at a Game Studio, You read all the reviews given to the games from the Play Store or App Store, deeply understand all relevant reviews good and bad. You analyse these reviews and give a recommendation to the founder/developers as to what should be the next steps into improving the game. You list out all the recommendations in crisp points that are consumable and in not more than 200 words."}, {role: "user", content: `${comments}`}],
       },
       {
         headers: {
