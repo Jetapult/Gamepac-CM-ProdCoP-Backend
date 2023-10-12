@@ -596,13 +596,16 @@ const fetchComments= async (req, res) => {
 
     const response = await play.reviews.list({
       packageName: packageName,
+      translationLanguage: 'en_GB',
     });
 
     const reviews = response.data.reviews.map(review => ({
       comment: review.comments[0].userComment.text,
       userName: review.authorName,
       userRating: review.comments[0].userComment.starRating,
+      originalLang: review.comments[0].userComment.originalText,
       date: new Date(review.comments[0].userComment.lastModified.seconds * 1000).toLocaleDateString('en-GB'), // Convert from Unix timestamp to JavaScript Date object and format as DD-MM-YYYY
+      reviewId: review.reviewId
     }));
 
     res.json(reviews);
@@ -611,6 +614,35 @@ const fetchComments= async (req, res) => {
     res.status(500).json({ error: 'Error fetching reviews' });
   }
 };
+
+const postGoogleReply=async(req,res)=>{
+  try {
+    const {reply,reviewId,packageName}=req.body;
+
+    const auth = new google.auth.GoogleAuth({
+      keyFile: './service-account.json',
+      scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+    });
+
+    const play = google.androidpublisher({
+      version: 'v3',
+      auth: auth,
+    });
+    const response = await play.reviews.reply({
+      packageName: packageName,
+      reviewId: reviewId,
+      requestBody: {
+        replyText: reply,
+      },
+    });
+
+    res.json(response.data);
+
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: 'Error fetching reviews' });
+  }
+}
 
 const fetchAppleComments=async (req, res) => {
   try {
@@ -646,5 +678,6 @@ const fetchAppleComments=async (req, res) => {
     title,
     fetchComments,
     fetchAppleComments,
+    postGoogleReply,
     // Export other controller functions as needed
   };

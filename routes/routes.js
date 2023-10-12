@@ -18,6 +18,7 @@ router.post('/todos',middleware.decodeToken,controller.todos);
 router.post('/title',middleware.decodeToken,controller.title);
 router.post('/fetchComments',controller.fetchComments);
 router.post('/fetchAppleComments',controller.fetchAppleComments);
+router.post('/postReply',controller.postGoogleReply);
 
 
 
