@@ -442,6 +442,7 @@ const recorder = async (req, res) => {
 const smartActions = async(req,res)=>{
   try {
     const { comments,game } = req.body;
+    console.log(req.body);
 
   // Now send the transcription to OpenAI API to create a summary
     const openaiResponse = await axios.post(
@@ -643,12 +644,73 @@ const postGoogleReply=async(req,res)=>{
     res.status(500).json({ error: 'Error fetching reviews' });
   }
 }
+const postAppleReply = async (req, res) => {
+  try {
+    const { reviewId, reply } = req.body;
+
+    const token = generateJwt(keyId, issuerId, privateKey);
+
+    const response = await axios.post(
+      'https://api.appstoreconnect.apple.com/v1/customerReviewResponses',
+      {
+        data: {
+          type: 'customerReviewResponses',
+          attributes: {
+            responseBody: reply,
+          },
+          relationships:{
+            review:{
+              data:{
+                type: "customerReviews",
+                id:reviewId,
+              }
+            }
+          }
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error posting reply:', error);
+    res.status(500).json({ error: 'Error posting reply' });
+  }
+};
+
+const getAppleResponse=async (req, res) => {
+  try {
+    const { reviewId} = req.body;
+
+    const token = generateJwt(keyId, issuerId, privateKey);
+
+    const response = await axios.get(
+      `https://api.appstoreconnect.apple.com/v1/customerReviews/${reviewId}/response`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error posting reply:', error);
+    res.status(500).json({ error: 'Error posting reply' });
+  }
+};
 
 const fetchAppleComments=async (req, res) => {
   try {
     const id = req.body.appId;
     const token = generateJwt(keyId, issuerId, privateKey);
-    const response = await axios.get(`https://api.appstoreconnect.apple.com/v1/apps/${id}/customerReviews`, {
+    const response = await axios.get(`https://api.appstoreconnect.apple.com/v1/apps/${id}/customerReviews?`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -679,5 +741,7 @@ const fetchAppleComments=async (req, res) => {
     fetchComments,
     fetchAppleComments,
     postGoogleReply,
+    postAppleReply,
+    getAppleResponse
     // Export other controller functions as needed
   };

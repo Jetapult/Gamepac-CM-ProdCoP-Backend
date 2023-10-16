@@ -19,9 +19,9 @@ router.post('/title',middleware.decodeToken,controller.title);
 router.post('/fetchComments',controller.fetchComments);
 router.post('/fetchAppleComments',controller.fetchAppleComments);
 router.post('/postReply',controller.postGoogleReply);
+router.post('/postAppleReply',controller.postAppleReply);
 
-
-
+router.get('/getAppleResponse', controller.getAppleResponse);
 router.get('/data/:id',controller.getData);
 router.get('/user/:uid',controller.userData);
 router.get('/users',controller.getUsers);
