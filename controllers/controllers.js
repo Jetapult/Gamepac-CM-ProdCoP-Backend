@@ -107,7 +107,7 @@ async function splitAndTranscribeRecorderAudio(input, outputDirectory) {
   });
 
   // Calculate the number of chunks
-  const chunkDuration = 20 * 60; // 5 minutes in seconds
+  const chunkDuration = 1 * 60; // 5 minutes in seconds
   const numChunks = Math.ceil(duration / chunkDuration);
 
   // Create the output directory if it doesn't exist
@@ -229,7 +229,7 @@ const transcribe = async (req, res) => {
 
       // Clean up temporary files if needed
       fs.unlinkSync(audioFilePath);
-      fs.rmdirSync(outputDirectory, { recursive: true });
+      fs.rmSync(outputDirectory, { recursive: true });
 
       console.log('Finished splitting and transcribing.');
       res.json({ transcription });
@@ -410,7 +410,7 @@ const recorder = async (req, res) => {
 
       // Clean up temporary files if needed
       fs.unlinkSync(audioFilePath);
-      fs.rmdirSync(outputDirectory, { recursive: true });
+      fs.rmSync(outputDirectory, { recursive: true });
 
       console.log('Finished splitting and transcribing.');
       res.json({ transcription });
