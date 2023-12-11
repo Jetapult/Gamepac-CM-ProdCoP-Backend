@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 require('dotenv').config();
-const { S3Client, PutObjectCommand} = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { google } = require('googleapis');
 const jwt = require('jsonwebtoken');
 
@@ -385,8 +385,17 @@ const getUsers=async(req,res)=>{
 //Route to get transcriptions for offline recording
 const recorder = async (req, res) => {
   try {
-    const audioFile = req.file;
-    
+    const {s3Key} = req.body;
+    console.log(s3Key)
+    const params={
+      Bucket:bucket_name,
+      Key: s3Key
+    }
+    // Create a new GetObjectCommand with the parameters
+    const command = new GetObjectCommand(params)
+    const { Body }= await s3.send(command);
+    const audioFile = Body;
+    console.log(audioFile);
     if (!audioFile) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
@@ -418,7 +427,7 @@ const recorder = async (req, res) => {
       console.log('Audio file size is within the acceptable range. Transcribing...');
       
       const formData = new FormData();
-      formData.append('file', audioFile.buffer, { filename: 'audio.wav', contentType: 'audio/wav' });
+      formData.append('file', audioFile, { filename: 'audio.wav', contentType: 'audio/wav' });
       formData.append('model', 'whisper-1');
       formData.append('response_format', 'json');
       
