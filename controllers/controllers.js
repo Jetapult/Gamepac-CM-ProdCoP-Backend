@@ -9,6 +9,7 @@ require('dotenv').config();
 const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { google } = require('googleapis');
 const jwt = require('jsonwebtoken');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const bucket_name=process.env.AWS_BUCKET_NAME
 const bucket_region=process.env.AWS_BUCKET_REGION
@@ -735,6 +736,43 @@ const fetchAppleComments=async (req, res) => {
     res.status(500).json({ error: 'Error fetching customer reviews' });
   }
 };
+// Converts local file information to a GoogleGenerativeAI.Part object.
+function bufferToGenerativePart(buffer, mimeType) {
+  return {
+    inlineData: {
+      data: buffer.toString("base64"),
+      mimeType
+    },
+  };
+}
+const generateData = async(req,res)=>{
+  try{
+    const imageFiles = req.files;
+    console.log(imageFiles) // This is the uploaded file
+    console.log(req.body)
+    const prompt = req.body.prompt;
+    console.log(prompt)
+
+
+    // Access your API key as an environment variable (see "Set up your API key" above)
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY); 
+
+    // For text-and-image input (multimodal), use the gemini-pro-vision model
+    const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+
+    const imageParts = imageFiles.map(file => bufferToGenerativePart(file.buffer, file.mimetype));
+
+    const result = await model.generateContent([prompt, ...imageParts]);
+    const response = await result.response;
+    const generatedText = response.text();
+    console.log(generatedText);
+
+    res.json({ generatedText });
+  }catch(error){
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Error generating content' });
+  }
+}
 
 
   module.exports = {
@@ -754,6 +792,7 @@ const fetchAppleComments=async (req, res) => {
     fetchAppleComments,
     postGoogleReply,
     postAppleReply,
-    getAppleResponse
+    getAppleResponse,
+    generateData
     // Export other controller functions as needed
   };
