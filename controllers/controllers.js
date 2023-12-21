@@ -619,9 +619,9 @@ const fetchComments= async (req, res) => {
       userRating: review.comments[0].userComment.starRating,
       originalLang: review.comments[0].userComment.originalText,
       date: new Date(review.comments[0].userComment.lastModified.seconds * 1000).toLocaleDateString('en-GB'), // Convert from Unix timestamp to JavaScript Date object and format as DD-MM-YYYY
-      reviewId: review.reviewId
-    }));
-
+      reviewId: review.reviewId,
+      postedReply: (review.comments.length > 1 ? review.comments[1].developerComment.text : null)
+      }));
     res.json(reviews);
   } catch (error) {
     console.error('Error fetching reviews:', error);
