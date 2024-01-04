@@ -10,6 +10,7 @@ const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/clien
 const { google } = require('googleapis');
 const jwt = require('jsonwebtoken');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const cron = require('node-cron');
 
 const bucket_name=process.env.AWS_BUCKET_NAME
 const bucket_region=process.env.AWS_BUCKET_REGION
@@ -593,42 +594,221 @@ const todos= async (req, res) => {
   }
 };
 
-//Fetch comments from google Play Store
-const fetchComments= async (req, res) => {
+const packageNames = ['com.holycowstudio.my.home.design.makeover.games.dream.word.redecorate.masters.life.house.decorating','com.holycowstudio.my.design.home.makeover.word.house.life.games.mansion.decorate.decor.masters','com.holycowstudio.design.my.home.makeover.word.life','com.holycowstudio.homedesigndreams','com.holycowstudio.gamedevtycoon','com.holycowstudio.my.home.design.makeover.games.dream.word.redecorate.masters.life.house.decorating' ,'com.ns.idlesmartphonetycoon','com.holycowstudio.my.home.design.makeover.luxury.interiors.word.dream.million.dollar.house.renovation','com.theholycowstudio.youtubertycoon','com.holycowstudio.idle.hotel.tycoon.clicker.tap.empire.incremental.games', 'com.holycowstudio.oiltycoon2','com.holycowstudio.coffeetycoon','com.holycowstudio.mystery.island.design.match.decoration.lost.adventure','com.romit.sheikhoiltycoon','com.holycowstudio.designyourcatroom']
+
+// Schedule a task to run every midnight
+cron.schedule('0 0 * * *', async () => {
+  try {
+    console.log('Cron job started');
+    for (const packageName of packageNames){
+      // Fetch the reviews
+      const reviews = await fetchCommentsFromStore(packageName);
+      // Store the reviews in the database
+      await storeComments(reviews, packageName);
+    // Your code here
+    }
+    console.log('Cron job finished');
+
+  } catch (error) {
+    console.error('Error in cron job:', error);
+  }
+});
+
+// This function fetches comments and can be used both in your route and in your cron job
+async function fetchCommentsFromStore(packageName) {
+    try {
+  
+      const auth = new google.auth.GoogleAuth({
+        keyFile: './service-account.json',
+        scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+      });
+  
+      const play = google.androidpublisher({
+        version: 'v3',
+        auth: auth,
+      });
+  
+      const response = await play.reviews.list({
+        packageName: packageName,
+        translationLanguage: 'en_GB',
+      });
+    if (response.data.reviews) {
+      const reviews = response.data.reviews.map(review => {
+        const userComment = review.comments[0].userComment;
+        const deviceMetadata = userComment.deviceMetadata || {};
+        return {
+          reviewId: review.reviewId,
+          userName: review.authorName,
+          comment: userComment.text,
+          date: new Date(userComment.lastModified.seconds * 1000),
+          userRating: userComment.starRating,
+          originalLang: userComment.originalText,
+          reviewerLanguage: userComment.reviewerLanguage,
+          postedReply: (review.comments.length > 1 ? review.comments[1].developerComment.text : null),
+          device: userComment.device,
+          androidOsVersion: userComment.androidOsVersion,
+          appVersionCode: userComment.appVersionCode,
+          appVersionName: userComment.appVersionName,
+          thumbsUpCount: userComment.thumbsUpCount,
+          thumbsDownCount: userComment.thumbsDownCount,
+          deviceMetadata: {
+            productName: deviceMetadata.productName,
+            manufacturer: deviceMetadata.manufacturer,
+            deviceClass: deviceMetadata.deviceClass,
+            screenWidthPx: deviceMetadata.screenWidthPx,
+            screenHeightPx: deviceMetadata.screenHeightPx,
+            nativePlatform: deviceMetadata.nativePlatform,
+            screenDensityDpi: deviceMetadata.screenDensityDpi,
+            glEsVersion: deviceMetadata.glEsVersion,
+            cpuModel: deviceMetadata.cpuModel,
+            cpuMake: deviceMetadata.cpuMake,
+            ramMb: deviceMetadata.ramMb
+          }
+        };
+      });
+      return reviews;
+    }else{
+      return [];
+    }
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+      res.status(500).json({ error: 'Error fetching reviews'});
+    }
+  }
+  
+const fetchComments = async (req, res) => {
   try {
     const packageName = req.body.packageName;
-
-    const auth = new google.auth.GoogleAuth({
-      keyFile: './service-account.json',
-      scopes: ['https://www.googleapis.com/auth/androidpublisher'],
-    });
-
-    const play = google.androidpublisher({
-      version: 'v3',
-      auth: auth,
-    });
-
-    const response = await play.reviews.list({
-      packageName: packageName,
-      translationLanguage: 'en_GB',
-    });
-
-    const reviews = response.data.reviews.map(review => ({
-      comment: review.comments[0].userComment.text,
-      userName: review.authorName,
-      userRating: review.comments[0].userComment.starRating,
-      originalLang: review.comments[0].userComment.originalText,
-      date: new Date(review.comments[0].userComment.lastModified.seconds * 1000).toLocaleDateString('en-GB'), // Convert from Unix timestamp to JavaScript Date object and format as DD-MM-YYYY
-      reviewId: review.reviewId,
-      postedReply: (review.comments.length > 1 ? review.comments[1].developerComment.text : null)
-      }));
-    res.json(reviews);
+    const comments = await fetchCommentsFromStore(packageName);
+    res.json(comments);
   } catch (error) {
     console.error('Error fetching reviews:', error);
     res.status(500).json({ error: 'Error fetching reviews' });
   }
 };
 
+async function storeComments(reviews,packageName) {
+  try {
+      for (const review of reviews) {
+      await pool.query(`
+      INSERT INTO reviews_table (
+        reviewId, 
+        authorName, 
+        comment, 
+        date,
+        userRating, 
+        reviewerLanguage,
+        originalLang,
+        postedreply,
+        device, 
+        androidOsVersion, 
+        appVersionCode, 
+        appVersionName, 
+        thumbsUpCount, 
+        thumbsDownCount, 
+        productName, 
+        manufacturer, 
+        deviceClass, 
+        screenWidthPx, 
+        screenHeightPx, 
+        nativePlatform, 
+        screenDensityDpi, 
+        glEsVersion, 
+        cpuModel, 
+        cpuMake, 
+        ramMb, 
+        packageName
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
+      )
+      ON CONFLICT (reviewId) DO UPDATE SET
+        postedreply = EXCLUDED.postedreply
+      WHERE reviews_table.postedreply IS NULL AND EXCLUDED.postedreply IS NOT NULL;
+    `, [
+        review.reviewId, 
+        review.userName, 
+        review.comment, 
+        review.date, 
+        review.userRating, 
+        review.reviewerLanguage, 
+        review.originalLang,
+        review.postedReply,
+        review.device, 
+        review.androidOsVersion, 
+        review.appVersionCode, 
+        review.appVersionName, 
+        review.thumbsUpCount, 
+        review.thumbsDownCount, 
+        review.deviceMetadata.productName, 
+        review.deviceMetadata.manufacturer, 
+        review.deviceMetadata.deviceClass, 
+        review.deviceMetadata.screenWidthPx, 
+        review.deviceMetadata.screenHeightPx, 
+        review.deviceMetadata.nativePlatform, 
+        review.deviceMetadata.screenDensityDpi, 
+        review.deviceMetadata.glEsVersion, 
+        review.deviceMetadata.cpuModel, 
+        review.deviceMetadata.cpuMake, 
+        review.deviceMetadata.ramMb, 
+        packageName
+      ]);
+    }
+
+    console.log('Reviews updated successfully');
+  } catch (error) {
+    console.error('Error updating reviews:', error);
+  }
+}
+
+//Route to get Data wrt Action Id
+const getGoogleData= async (req, res) => {
+  try {
+    const packageName=req.body.packageName;
+    // Use your database pool/connection to fetch data for the given data_id
+    const query = `
+      SELECT *
+      FROM reviews_table
+      WHERE packagename = $1;
+    `;
+    const values = [packageName];
+    const result = await pool.query(query, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Data not found' });
+    }
+    const data = result.rows.map(review=>({
+      reviewId: review.reviewid, 
+      userName: review.authorname, 
+      comment: review.comment, 
+      date: review.date, 
+      userRating: review.userrating, 
+      reviewerLanguage: review.reviewerlanguage, 
+      originalLang: review.originallang,
+      postedReply: review.postedreply,
+      device: review.device, 
+      androidOsVersion: review.androidOsvversion, 
+      appVersionCode: review.appVersioncode, 
+      appVersionName: review.appVersionname, 
+      thumbsUpCount: review.thumbsupcount, 
+      thumbsDownCount: review.thumbsdowncount, 
+      productName: review.productname, 
+      manufacturer: review.manufacturer, 
+      deviceClass: review.deviceclass, 
+      screenWidthPx: review.screenwidthpx, 
+      screenHeightPx: review.screenheightpx, 
+      nativePlatform: review.nativeplatform, 
+      screenDensityDpi: review.screenDensitydpi, 
+      glEsVersion: review.glesversion, 
+      cpuModel: review.cpumodel, 
+      cpuMake: review.cpumake, 
+      ramMb: review.rammb, 
+    }))
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    res.status(500).json({ error: 'Error fetching data' });
+  }
+};
 const postGoogleReply=async(req,res)=>{
   try {
     const {reply,reviewId,packageName}=req.body;
@@ -793,6 +973,7 @@ const generateData = async(req,res)=>{
     postGoogleReply,
     postAppleReply,
     getAppleResponse,
-    generateData
+    generateData,
+    getGoogleData
     // Export other controller functions as needed
   };
